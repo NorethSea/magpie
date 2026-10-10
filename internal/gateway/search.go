@@ -153,7 +153,11 @@ func searchAsked(proto provider.Protocol, body []byte) bool {
 // searcher is the model magpie searches with: the one Settings names, while
 // it can (chosenSearcher), else the first of the providers that search by
 // themselves, with a small model of theirs, as searching needs no more.
+// An explicit "off" leaves only the search APIs.
 func searcher() (provider.Provider, string, bool) {
+	if settings.Load().Searcher == "off" {
+		return provider.Provider{}, "", false
+	}
 	if p, m, why := chosenSearcher(); why == "" && p != nil {
 		return *p, m, true
 	}
@@ -237,10 +241,11 @@ const (
 // chosenSearcher is the provider and model Settings' Searcher names
 // ("<provider>" for its small model, or "<provider>/<model>"), and why it
 // can't be used, "" when it can. A model it no longer lists gives way to
-// its small model, as when none is named. Nil when none is named.
+// its small model, as when none is named. Nil when none is named or
+// provider search is explicitly off.
 func chosenSearcher() (*provider.Provider, string, string) {
 	v := strings.TrimSpace(settings.Load().Searcher)
-	if v == "" {
+	if v == "" || v == "off" {
 		return nil, "", ""
 	}
 	id, model, _ := strings.Cut(v, "/")
@@ -404,7 +409,14 @@ const searchSystem = "You are a web search tool. Search the web for what is aske
 // then with the searcher's model, or, without one or when it fails, with
 // the search APIs the user set up (#419). Settings can put the search APIs
 // first (#928): the providers then search only when none of them answers.
+// With provider search off, only the search APIs are asked.
 func (s *Server) webSearch(ctx context.Context, query string) (string, []Hit, error) {
+	if settings.Load().Searcher == "off" {
+		if len(provider.SearchAPIs()) == 0 {
+			return "", nil, errNoSearcher
+		}
+		return s.apiSearch(ctx, query)
+	}
 	var errs []error
 	apiFirst := settings.Load().SearchFirst == settings.SearchFirstAPI && len(provider.SearchAPIs()) > 0
 	if apiFirst {

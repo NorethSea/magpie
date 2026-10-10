@@ -19799,7 +19799,8 @@ function renderSearch(s, keep) {
   }
   draw();
   const apiFirst = s.searchFirst === "api" && (s.searchAPIs || []).length > 0;
-  const by = !s.searchProvider ? t("No provider can search, so these are asked")
+  const by = s.searcher === "off" ? t("Provider search is off; only these APIs are used")
+    : !s.searchProvider ? t("No provider can search, so these are asked")
     : apiFirst ? t("Asked before {who}, which searches when these fail", { who: s.searchProvider })
     : t("Now done by {who}; these come after it", { who: s.searchProvider });
   const head = row(t("Search APIs"), d.err || t("When a model can't search the web, magpie searches for it with these, in this order, and gives it what they found") + " · " + by,
@@ -19855,6 +19856,7 @@ function renderSearch(s, keep) {
 function renderSearcher(s, keep, box) {
   const choices = s.searchChoices || [];
   const v = s.searcher || "";
+  const off = v === "off";
   const named = (id) => {
     const [pid, ...rest] = id.split("/");
     const c = choices.find((x) => x.id === pid);
@@ -19867,21 +19869,21 @@ function renderSearcher(s, keep, box) {
   const icOf = (id) => choices.find((x) => x.id === id.split("/")[0])?.icon;
   const r = el("div", "row pref searcher-row");
   const who = el("div", "who");
-  const sub = el("div", "sub", t("When a model can't search the web directly, the selected provider searches for it and returns the results. Searches may use the service's quota or incur charges; if a search fails, magpie tries other available sources."));
-  if (v && s.searchUnused) {
+  const sub = el("div", "sub", off ? t("When provider search is off, only configured Search APIs are used. Without a Search API, magpie does not add a search tool. Providers' native web search is unchanged.") : t("When a model can't search the web directly, the selected provider searches for it and returns the results. Searches may use the service's quota or incur charges; if a search fails, magpie tries other available sources."));
+  if (!off && v && s.searchUnused) {
     const why = { gone: t("it is no longer in magpie"), off: t("it is turned off"), cant: t("it can't search the web by itself"), nomodel: t("it lists no model") }[s.searchUnused] || s.searchUnused;
     sub.append(" · ", el("span", "warn searcher-unused", t("{who} isn't used: {why}, so magpie picks one", { who: named(v), why })));
   }
   const plans = choices.filter((c) => c.service).map((c) => c.name);
-  if (plans.length) sub.append(" · ", el("span", "searcher-own",
+  if (!off && plans.length) sub.append(" · ", el("span", "searcher-own",
     t("A Kimi Code plan ({names}) searches for its own models first, with its web search; for other models only when named here", { names: plans.join(", ") })));
   const googles = choices.filter((c) => c.own).map((c) => c.name);
-  if (googles.length) sub.append(" · ", el("span", "searcher-own",
+  if (!off && googles.length) sub.append(" · ", el("span", "searcher-own",
     t("{names} search for their own models first, with Gemini's Google Search", { names: googles.join(", ") })));
-  if (s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
+  if (!off && s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
     t("These relays must be selected manually and are not used for automatic selection or fallback: {names}.", { names: s.searchRelays.join(", ") })));
   // Being left out can also mean no usable model, not just no search support.
-  if (s.searchLeftOut?.length) sub.append(" · ", el("span", "searcher-left-out",
+  if (!off && s.searchLeftOut?.length) sub.append(" · ", el("span", "searcher-left-out",
     t("These providers can't be selected to search for other models with the current configuration: {names}. Their models can still get search results through other available search providers or configured search APIs.", { names: s.searchLeftOut.length > 6
       ? t("{names} and {n} more", { names: s.searchLeftOut.slice(0, 5).join(", "), n: s.searchLeftOut.length - 5 })
       : s.searchLeftOut.join(", ") })));
@@ -19889,12 +19891,14 @@ function renderSearcher(s, keep, box) {
   const b = el("button", "rt-cond on searcher-pick");
   b.type = "button";
   b.setAttribute("aria-label", t("Searches for other models"));
-  if (v && !s.searchUnused) b.append(icon(icOf(v) || "generic"), el("span", "", named(v)));
+  if (off) b.append(el("span", "", t("Off")));
+  else if (v && !s.searchUnused) b.append(icon(icOf(v) || "generic"), el("span", "", named(v)));
   else {
     if (s.searchAuto) b.append(icon(choices[0]?.icon || "generic"));
     b.append(el("span", "", t("Automatic") + " · " + (s.searchAuto || t("no provider that searches"))));
   }
-  const options = [{ value: "", label: t("Automatic"), note: s.searchAuto || t("no provider that searches"), reset: true }];
+  const options = [{ value: "", label: t("Automatic"), note: s.searchAuto || t("no provider that searches"), reset: true },
+    { value: "off", label: t("Off"), note: t("Search APIs"), reset: true }];
   for (const c of choices) {
     if (c.service) {
       options.push({ value: c.id, label: t("its web search"), note: c.name, icon: c.icon, group: c.name });

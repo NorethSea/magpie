@@ -222,8 +222,8 @@ type Settings struct {
 	// Searcher is the provider that searches the web for a model that
 	// can't: "<provider>" with the small model magpie picks of it,
 	// "<provider>/<model>", or empty for the one magpie picks
-	// (gateway.searcher). One that is gone, off or can't search gives way
-	// to magpie's pick.
+	// (gateway.searcher). "off" allows only configured search APIs.
+	// One that is gone, off or can't search gives way to magpie's pick.
 	Searcher string `json:"searcher,omitempty"`
 	// SearchFirst is what a model that can't search the web is searched
 	// for with first, when both a provider and a search API can (#928):

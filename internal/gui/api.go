@@ -1062,7 +1062,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 				return
 			}
 		}
-		if v := strings.TrimSpace(in.Searcher); v != "" && v != cur.Searcher {
+		if v := strings.TrimSpace(in.Searcher); v != "" && v != "off" && v != cur.Searcher {
 			id, _, _ := strings.Cut(v, "/")
 			if !slices.ContainsFunc(gateway.Searchers(), func(c gateway.SearcherChoice) bool { return c.Provider.ID == id }) {
 				fail(rw, fmt.Errorf("%s can't search the web for other models", id))

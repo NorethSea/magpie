@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // A Kimi Code plan searches the web with its own key, as kimi-cli's
@@ -45,6 +46,9 @@ type searchCallKey struct{}
 // search: one of p's own (a Kimi Code plan, a Google sign-in), or
 // canSearch.
 func canSearchFor(p provider.Provider) bool {
+	if settings.Load().Searcher == "off" {
+		return canSearch()
+	}
 	return provider.KimiCodeSearch(p) != "" || googleAccount(p) && searcherModel(p) != "" || canSearch()
 }
 
