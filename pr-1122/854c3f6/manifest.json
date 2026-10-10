@@ -1,0 +1,54 @@
+{
+  "summary": "diff 给 GUI 加了 Google Vertex AI 预设：添加/编辑这种供应商时，编辑器用「项目 ID、位置、凭据文件、服务账号」代替 API 密钥，端点一栏随项目与位置实时拼出地址，供应商行右侧显示签名用的凭据（服务账号、凭据文件名或 Google ADC，缺项目时说「需要项目」）；另外「请求」列表按路径判断协议时，generateContent 不再区分大小写。",
+  "scenes": [
+    {
+      "title": "添加一个 Google Vertex AI 供应商",
+      "shots": [
+        {
+          "file": "01-vertex-editor-fields.png",
+          "caption": "Google Vertex AI 的编辑器：项目 ID、位置、凭据文件、服务账号，没有 API 密钥栏",
+          "width": 1296
+        },
+        {
+          "file": "02-vertex-needs-project.png",
+          "caption": "项目 ID 为空时点「添加」后的编辑器",
+          "width": 1296
+        },
+        {
+          "file": "03-vertex-endpoint.png",
+          "caption": "填了项目 ID 后，端点一栏的样子",
+          "width": 1120
+        },
+        {
+          "file": "04-vertex-endpoint-region.png",
+          "caption": "位置改成 us-central1 后，端点一栏的样子",
+          "width": 1120
+        },
+        {
+          "file": "05-vertex-row-pill.png",
+          "caption": "供应商列表里多出的这一行及其右侧的凭据标签",
+          "width": 2496
+        }
+      ]
+    },
+    {
+      "title": "「请求」列表里的协议标签",
+      "shots": [
+        {
+          "file": "06-requests-protocol-tags.png",
+          "caption": "「请求」列表：每条请求的协议列",
+          "width": 2560
+        }
+      ]
+    }
+  ],
+  "video": "preview.mp4",
+  "poster": "poster.png",
+  "errors": [],
+  "leak": false,
+  "skipped": null,
+  "mismatch": "",
+  "unseen": "沙箱里没有 Google 凭据，也没有已保存的 Vertex AI 供应商，所以「测试」按钮用所填的项目与凭据真正向 Vertex AI 发一次请求（以及签名、token 和各条错误提示）演示不了；「需要项目」那一版标签只有手改 providers.json、做出一个没有项目的 Vertex 供应商才会出现。此外，「请求」列表里是否出现 Gemini 标签取决于沙箱的请求记录里有没有走 generateContent 路径的行。",
+  "interactive": true,
+  "pages": 2
+}

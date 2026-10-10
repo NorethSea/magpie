@@ -1,0 +1,17 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#1122 界面预览 · 854c3f6</title>
+<style>:root{color-scheme:light dark;--bg:#f6f6f7;--fg:#1d1d1f;--muted:#6e6e73;--card:#fff;--line:#e5e5ea}
+@media (prefers-color-scheme:dark){:root{--bg:#111113;--fg:#f2f2f4;--muted:#9a9aa0;--card:#1c1c1f;--line:#2c2c30}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 16px 60px}h1{font-size:20px;margin:0 0 4px}.m{color:var(--muted);font-size:13px;margin:0 0 20px}
+video,img{display:block;width:100%;border-radius:10px;border:1px solid var(--line);background:var(--card)}figure{margin:0 0 28px}figcaption{color:var(--muted);font-size:13px;margin-top:8px}
+a{color:inherit}</style>
+<main><h1>#1122 界面预览</h1><p class="m">commit 854c3f6 · <a href="https://github.com/yetone/magpie/pull/1122">回到 PR</a> · diff 给 GUI 加了 Google Vertex AI 预设：添加/编辑这种供应商时，编辑器用「项目 ID、位置、凭据文件、服务账号」代替 API 密钥，端点一栏随项目与位置实时拼出地址，供应商行右侧显示签名用的凭据（服务账号、凭据文件名或 Google ADC，缺项目时说「需要项目」）；另外「请求」列表按路径判断协议时，generateContent 不再区分大小写。</p>
+<figure><video src="preview.mp4" controls autoplay muted playsinline poster="poster.png"></video><figcaption>红线是鼠标走过的轨迹，红色圆环是一次点击；底部文字是这一步在做什么。空格暂停，← → 逐段查看。</figcaption></figure>
+<figure><img src="01-vertex-editor-fields.png" alt="Google Vertex AI 的编辑器：项目 ID、位置、凭据文件、服务账号，没有 API 密钥栏"><figcaption>添加一个 Google Vertex AI 供应商 · Google Vertex AI 的编辑器：项目 ID、位置、凭据文件、服务账号，没有 API 密钥栏</figcaption></figure>
+<figure><img src="02-vertex-needs-project.png" alt="项目 ID 为空时点「添加」后的编辑器"><figcaption>添加一个 Google Vertex AI 供应商 · 项目 ID 为空时点「添加」后的编辑器</figcaption></figure>
+<figure><img src="03-vertex-endpoint.png" alt="填了项目 ID 后，端点一栏的样子"><figcaption>添加一个 Google Vertex AI 供应商 · 填了项目 ID 后，端点一栏的样子</figcaption></figure>
+<figure><img src="04-vertex-endpoint-region.png" alt="位置改成 us-central1 后，端点一栏的样子"><figcaption>添加一个 Google Vertex AI 供应商 · 位置改成 us-central1 后，端点一栏的样子</figcaption></figure>
+<figure><img src="05-vertex-row-pill.png" alt="供应商列表里多出的这一行及其右侧的凭据标签"><figcaption>添加一个 Google Vertex AI 供应商 · 供应商列表里多出的这一行及其右侧的凭据标签</figcaption></figure>
+<figure><img src="06-requests-protocol-tags.png" alt="「请求」列表：每条请求的协议列"><figcaption>「请求」列表里的协议标签 · 「请求」列表：每条请求的协议列</figcaption></figure>
+</main></html>
