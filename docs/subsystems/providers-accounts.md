@@ -131,6 +131,20 @@ listed models keep their `Available` names unchanged
 
 ## Constraints and failure behavior
 
+Allowance readings are kept by provider, lowercased account and window in
+`quota-history.json` ([`quota_history.go`](../../internal/provider/quota_history.go)),
+for up to 45 days and 6000 points per window. Failed or stale readings add
+nothing. `newCycle` preserves a boundary when the previous deadline passes,
+appears/disappears, moves backward by more than five minutes or forward by
+more than the elapsed sampling time plus five minutes. A refill of more
+than five percentage points with a deadline unchanged within five minutes
+is also a boundary: a manual or vendor reset need not change the deadline.
+Smaller corrections and a rolling deadline advancing with time do not
+split that window. These are observed boundaries, not a record of who reset
+it; multiple resets between readings and refills hidden by subsequent
+spending cannot be recovered. Sampling compression and sync merging keep
+readings on both sides of detected boundaries.
+
 - Each refresh token has exactly one holder. Vendors rotate tokens on refresh, so two copies of one token would sign each other out. `savedTokenMu` stops two requests refreshing one saved account at once.
 - A Claude subscription account is used only for Claude Code, through the genuine Claude Code binary (see [Claude subscription bridge](claude-subscription-bridge.md)).
 - Claude usage asks are ordered by `claudeAskGeneration`, not wall-clock timestamps. `AskClaudeUsage` and a Claude card's `RefreshUsage` advance it while holding the subscription cache then the login cache lock (`markClaudeUsageAsked`). Each cache captures it under its own lock before launching a read and checks it under that lock when publishing: a newer ask prevents `LoginUsage` from keeping the older reading and leaves `SubscriptionUsage` due to read again. Each `claudeWindows` entry records the generation its run answered. The timestamp's zero sentinel, `tried`/`wait`, the 30-second floor, idle behavior and saved-account scope remain unchanged. [`login_usage.go`](../../internal/provider/login_usage.go), [`subscription_usage.go`](../../internal/provider/subscription_usage.go), [`quota_refresh.go`](../../internal/provider/quota_refresh.go).

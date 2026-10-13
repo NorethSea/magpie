@@ -846,6 +846,8 @@ body.window .field.solo { grid-column: auto; }
 .quota-curve { margin-top: 10px; }
 .quota-curve .qc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--muted); }
 .quota-curve .qc-range { font-size: 10px; color: var(--faint); }
+.quota-curve button.qc-range { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 0; }
+.quota-curve button.qc-range:disabled { opacity: 1; cursor: default; }
 .quota-curve .qc-plot { display: block; width: 100%; height: 52px; margin-top: 5px; overflow: hidden; }
 /* a click makes a curve larger, another back (TJHHHH on Discord) */
 .quota-curve .qc-plot { cursor: zoom-in; transition: height .15s ease; }

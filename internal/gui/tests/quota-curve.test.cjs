@@ -5,7 +5,8 @@
 // reset, and an upright line at now. One pick in the allowances' head, the
 // app's own menu, turns every card at once: "2 days" / "Cycle", or "Off"
 // (ARNO on Discord: the curves made the cards cluttered), which draws no
-// curve on any card, the tray's thin line included; the pick is remembered
+// curve on any card, the tray's thin line included; each account can pick
+// an earlier recorded cycle in Cycle mode. The global pick is remembered
 // across a reload, and no click moves the page. Several accounts on a card
 // are set apart by a rule, a curve's legend before the next one too. An
 // account with no readings has no curve. The tray's card has a thin line of
@@ -16,9 +17,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
+const vm = require("node:vm");
 const { chromium, webkit } = require("playwright");
 
-const assets = path.resolve(__dirname, "../assets");
+const assets = process.env.MAGPIE_QUOTA_ASSETS || path.resolve(__dirname, "../assets");
 const H = 3600e3;
 const iso = (ms) => new Date(ms).toISOString();
 
@@ -46,6 +48,141 @@ function fixtures(now) {
   return { quotas, history };
 }
 
+const cycleWords = {
+  en: { choose: "Choose a recorded cycle", past: "Past cycle", missing: "No readings in this cycle", duration: "Recorded duration:", reading: "Last reading", ended: "Cycle ended" },
+  zh: { choose: "选择已记录的周期", past: "历史周期", missing: "本周期无记录", duration: "已记录时长：", reading: "最后采样于", ended: "周期结束于" },
+  "zh-TW": { choose: "選擇已記錄的週期", past: "歷史週期", missing: "此週期無記錄", duration: "已記錄時長：", reading: "最後取樣於", ended: "週期結束於" },
+  ja: { choose: "記録されたサイクルを選択", past: "過去のサイクル", missing: "このサイクルの記録なし", duration: "記録された期間:", reading: "最終記録:", ended: "サイクル終了:" },
+  de: { choose: "Aufgezeichneten Zyklus wählen", past: "Vergangener Zyklus", missing: "Keine Messwerte in diesem Zyklus", duration: "Erfasste Dauer:", reading: "Letzte Messung:", ended: "Zyklusende:" },
+};
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  for (const [lang, w] of Object.entries(cycleWords)) {
+    test(`${engine} ${lang}: recorded quota cycles include manual and unscheduled resets`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      const context = await browser.newContext({ viewport: { width: 440, height: 760 }, reducedMotion: "reduce" });
+      const page = await context.newPage();
+      page.setDefaultTimeout(5000);
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      const now = Date.now(), D = 24 * H;
+      const data = fixtures(now);
+      data.quotas[0].readAt = iso(now);
+      data.quotas[0].windows[1].holds = { tokens: 100000, cost: 12, priced: true, used: 30, routed: { calls: 10, tokens: 30000, cost: 3.6 } };
+      const point = (day, left, reset) => ({ at: iso(now + day * D), left, start: iso(now + (reset - 7) * D), resetsAt: iso(now + reset * D) });
+      // An early manual reset, an official refill with the SAME deadline,
+      // then an ordinary week. None is found by subtracting seven days
+      // from today's deadline. Only the manual cycle has old 5-hour data.
+      data.quotas[0].windows[1].resetsAt = iso(now + D);
+      data.history[0].lines[1].points = [
+        point(-16, 90, -10), point(-14, 20, -10),
+        point(-13, 100, -6), point(-12, 70, -6),
+        point(-11, 100, -6), point(-9, 30, -6),
+        point(-5, 95, 1), point(-1 / 24, 65, 1),
+      ];
+      const shortReset = now - 12 * D + H;
+      data.history[0].lines[0].points.unshift({ at: iso(now - 12 * D), left: 12, start: iso(shortReset - 5 * H), resetsAt: iso(shortReset) });
+      const reads = [];
+      const handler = serve(lang, "light", false, data);
+      await page.route("**/*", (r) => { if (r.request().url().includes("/quotas/history")) reads.push(r.request().url()); return handler(r); });
+      await page.goto("http://magpie.test/?view=usage");
+      const card = page.locator('.subscription-card[data-key="codex"]');
+      const curve = card.locator(".quota-curve").first();
+      await curve.waitFor();
+      assert.equal(await curve.locator("button.qc-range").count(), 1, "each account can choose a recorded cycle");
+      assert.ok(reads.some((url) => new URL(url).searchParams.get("days") === "45"), "all retained history is requested");
+      await card.locator(".quota-more").click();
+      const other = card.locator(".quota-curve").nth(1);
+      const otherAxis = await other.locator(".qc-axis").textContent();
+      const currentAxis = await curve.locator(".qc-axis").textContent();
+      const currentLegend = await curve.locator(".qc-key").allTextContents();
+      const meters = card.locator(".quota-windows").first();
+      const currentMeters = await meters.locator(".quota-n").allTextContents();
+      assert.equal(await meters.locator(".quota-holds").count(), 1, "the current view keeps upstream's whole-window estimate");
+      const otherMeters = await card.locator(".quota-windows").nth(1).locator(".quota-n").allTextContents();
+      const pick = curve.getByRole("button", { name: w.choose });
+      for (const [index, left] of [[1, 30], [2, 70], [3, 20]]) {
+        const before = await page.locator("#view-usage").evaluate((v) => v.scrollTop);
+        await pick.click();
+        const items = page.locator(".sess-menu .pm-item");
+        assert.equal(await items.count(), 4, "current + three observed cycles");
+        const notes = await items.locator(".pm-note").allTextContents();
+        assert.ok(notes.slice(1).every((note) => note.startsWith(w.duration)), "menu describes the observed duration, not the window's nominal name");
+        assert.notEqual(notes[1], notes[2], "a regular week and an early reset have different lengths");
+        await items.nth(index).click();
+        assert.equal(await pick.textContent(), w.past);
+        assert.equal(await meters.locator(".quota-holds").count(), 0, "today's whole-window estimate is not presented as a historical estimate");
+        const hasShort = index === 2;
+        assert.deepEqual(await curve.locator(".qc-key b").allTextContents(), hasShort ? ["12%", left + "%"] : [left + "%"], "the historical legend uses that cycle's final reading");
+        assert.match(await meters.locator(".quota-n").nth(1).textContent(), new RegExp((100 - left) + "%"), "the weekly meter follows the historical selection");
+        if (hasShort) assert.match(await meters.locator(".quota-n").first().textContent(), /88%/, "the 5-hour meter uses its last reading inside that cycle");
+        else assert.equal(await meters.locator(".quota-n").first().textContent(), w.missing, "missing history never shows today's meter");
+        assert.ok((await meters.locator(".quota-reset").allTextContents()).every((text) => text.startsWith(w.ended)), "historical dates aren't current countdowns");
+        assert.ok((await card.locator(".quota-read").first().textContent()).includes(w.reading));
+        assert.equal(await card.locator(".quota-autoreset").count(), 1, "only the other account retains current controls");
+        assert.equal(await curve.locator("line.qc-now").count(), 0, "now is outside a completed cycle");
+        assert.equal(await curve.locator("line.qc-even").count(), hasShort ? 2 : 1, "the historical even pace belongs to the selected cycle");
+        assert.equal(await curve.locator("path.qc-line").count(), hasShort ? 2 : 1, "no fabricated short-window readings");
+        assert.notEqual(await curve.locator(".qc-axis").textContent(), currentAxis);
+        assert.equal(await other.locator(".qc-axis").textContent(), otherAxis, "another account stays on its own cycle");
+        assert.deepEqual(await card.locator(".quota-windows").nth(1).locator(".quota-n").allTextContents(), otherMeters);
+        assert.equal(await page.locator("#view-usage").evaluate((v) => v.scrollTop), before, "choosing a cycle doesn't scroll");
+        const coords = await curve.locator("path.qc-line").first().getAttribute("d");
+        assert.ok(!/NaN|Infinity/.test(coords), coords);
+      }
+      await meters.locator(".quota-n").nth(1).click();
+      assert.match(await meters.locator(".quota-n").nth(1).textContent(), /20%/, "Left is also the selected cycle's historical value");
+      assert.equal(await meters.locator(".quota-n").first().textContent(), w.missing);
+      await meters.locator(".quota-n").nth(1).click();
+      assert.match(await meters.locator(".quota-n").nth(1).textContent(), /80%/);
+      await page.locator("#quotaTrend").click();
+      await page.locator(".sess-menu .pm-item").nth(1).click();
+      assert.deepEqual(await meters.locator(".quota-n").allTextContents(), currentMeters, "2 days restores current meters");
+      await page.locator("#quotaTrend").click();
+      await page.locator(".sess-menu .pm-item").nth(2).click();
+      assert.match(await meters.locator(".quota-n").nth(1).textContent(), /80%/, "Cycle resumes the account's selected historical period");
+      await card.locator(".quota-refresh").first().click();
+      await page.waitForFunction(() => !document.querySelector(".quota-refresh.busy"));
+      assert.equal(await pick.textContent(), w.past, "a refresh preserves the selected historical cycle");
+      assert.deepEqual(await curve.locator(".qc-key b").allTextContents(), ["20%"]);
+      await pick.click();
+      await page.locator(".sess-menu .pm-item").first().click();
+      assert.equal(await curve.locator(".qc-axis").textContent(), currentAxis);
+      assert.deepEqual(await curve.locator(".qc-key").allTextContents(), currentLegend);
+      assert.deepEqual(await meters.locator(".quota-n").allTextContents(), currentMeters, "returning to this cycle restores today's meters");
+      assert.equal(await meters.locator(".quota-holds").count(), 1, "returning to this cycle restores upstream's whole-window estimate");
+      assert.deepEqual(await page.evaluate(() => ({ page: document.documentElement.scrollWidth > innerWidth, cards: [...document.querySelectorAll(".subscription-card")].some((c) => c.scrollWidth > c.clientWidth + 1) })), { page: false, cards: false });
+      assert.deepEqual(errors, []);
+      if (process.env.ARTIFACT_DIR) {
+        await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
+        await pick.click();
+        await page.locator(".sess-menu .pm-item").nth(2).click();
+        await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${lang}-quota-history.png`) });
+      }
+    });
+  }
+}
+
+test("quota curve distinguishes fixed refills, rolling recovery and clock rounding", async () => {
+  const source = await fs.readFile(path.join(assets, "app.js"), "utf8");
+  const start = source.indexOf("function quotaCycleBreak(a, b) {");
+  const end = source.indexOf("\n}\n", start);
+  const check = vm.runInNewContext(source.slice(start, end + 2) + "; quotaCycleBreak");
+  const at = Date.UTC(2026, 9, 1), reset = at + 7 * 24 * H;
+  const a = { at, reset, left: 20 };
+  for (const [name, gap, moved, left, want] of [
+    ["fixed deadline refill", 60e3, 0, 100, true],
+    ["rounded fixed refill", 10 * 60e3, 60e3, 100, true],
+    ["manual restart", 60e3, 24 * H, 100, true],
+    ["earlier official restart", 60e3, -24 * H, 100, true],
+    ["normal expiry", 7 * 24 * H, 7 * 24 * H, 100, true],
+    ["small correction", 60e3, 0, 24, false],
+    ["clock rounding", 60e3, 60e3, 20, false],
+    ["rolling recovery", H, H, 80, false],
+    ["fast rolling recovery", 60e3, 60e3, 80, false],
+  ]) assert.equal(check(a, { at: at + gap, reset: reset + moved, left }), want, name);
+});
+
 function serve(lang, theme, panel, data) {
   const settings = { theme, lang, tray: "panel", quotaLeft: false, currency: "usd" };
   return async (route) => {
@@ -55,9 +192,11 @@ function serve(lang, theme, panel, data) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings });
     if (url.pathname === "/api/settings") return json(settings);
+    if (url.pathname === "/api/settings/quota-left") { settings.quotaLeft = route.request().postDataJSON().on; return json(settings); }
     if (url.pathname === "/api/providers") return json({ providers: [], presets: [], excluded: [], gateway: { running: true, window: true } });
     if (url.pathname === "/api/usage/quotas") return json(data.quotas);
     if (url.pathname === "/api/usage/quotas/history") return json(data.history);
+    if (url.pathname === "/api/usage") return json({ calls: 0, input: 0, output: 0, cost: 0, agents: [], accounts: [], models: [], series: [], days: [] });
     if (url.pathname === "/api/groups") return json({ groups: [], models: [] });
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname.startsWith("/api/")) return json({});
@@ -107,7 +246,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // the range is picked once, in the allowances' head, not on every card
         const pick = page.locator("#quotaHead #quotaTrend");
         assert.equal(await pick.textContent(), w.trend(w.cycle), "Cycle first");
-        assert.equal(await page.locator(".quota-curve .segs, .quota-curve button, .quota-curve select").count(), 0, "no control on a card");
+        assert.equal(await page.locator(".quota-curve .segs, .quota-curve button:not(.qc-range), .quota-curve select").count(), 0, "only the account's cycle picker on a card");
         assert.equal(await curve.locator(".qc-range").textContent(), w.cycle);
         // a line a window, now; the 5-hour window, a comb over the week's
         // cycle, faint and without its upright even burn
