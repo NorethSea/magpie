@@ -1166,7 +1166,8 @@ var codexModelsWait = 3 * time.Second
 
 // codexModels is the ChatGPT backend's model list for this sign-in, with
 // magpie's models after it. Should the backend not answer, or not in
-// time, Codex's last list of its own stands in.
+// time, the last successful backend reply for this user and workspace
+// stands in. Without one yet, Codex's own cache remains the fallback.
 func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	var own []any
 	etag := ""
@@ -1185,8 +1186,11 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 			}
 			b, _ := io.ReadAll(io.LimitReader(res.Body, 16<<20))
 			res.Body.Close()
-			if res.StatusCode < 300 && json.Unmarshal(b, &list) == nil {
+			if res.StatusCode < 300 && json.Unmarshal(b, &list) == nil && usableCodexModels(list.Models) {
 				own, etag = list.Models, res.Header.Get("ETag")
+				if err := rememberCodexModels(r, own, etag); err != nil {
+					log.Printf("codex models: keep backend list: %v", err)
+				}
 				// the versions as the backend says them, before any is
 				// stamped below (see codexcat.V1)
 				codexcat.Remember(own)
@@ -1204,6 +1208,13 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	// built once, where each build read every agent's sign-in, keychain
 	// items among them, and together held the answer past Codex's 5 s (#746)
 	defer provider.Hold()()
+	if own == nil {
+		if models, tag, ok := cachedCodexModels(r); ok {
+			own, etag = models, tag
+		}
+	}
+	// Only the legacy, rendered cache needs its windows restored. The
+	// snapshot above already holds the backend's unmodified windows.
 	cached := own == nil
 	if cached {
 		for _, e := range codexcat.CacheEntries() {

@@ -102,7 +102,8 @@ func TestCodexNativeModelsTakeSetWindows(t *testing.T) {
 		t.Errorf("gpt-6.1-sol %d after the reset, want 272000", c)
 	}
 
-	// the backend away: the cache stands in, with the account's own windows
+	// The backend away: its last raw reply stands in, before the windows
+	// the user set, even when the provider's older list lacks a maximum.
 	catalog.SaveLive("codex", provider.CodexBase, []catalog.Model{
 		{ID: "gpt-6.1-sol", Context: 272000, MaxContext: 872000},
 		{ID: "gpt-5.5", Context: 272000},
@@ -112,9 +113,8 @@ func TestCodexNativeModelsTakeSetWindows(t *testing.T) {
 	if c, x := window(got["gpt-6.1-sol"]); c != 272000 || x != 872000 {
 		t.Errorf("cached gpt-6.1-sol %d/%d, want 272000/872000", c, x)
 	}
-	// the live list has no max for it: the cache's own stays
-	if c, x := window(got["gpt-5.5"]); c != 272000 || x != 400000 {
-		t.Errorf("cached gpt-5.5 %d/%d, want 272000/400000", c, x)
+	if c, x := window(got["gpt-5.5"]); c != 272000 || x != 272000 {
+		t.Errorf("cached gpt-5.5 %d/%d, want backend's 272000/272000", c, x)
 	}
 }
 
