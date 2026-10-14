@@ -26,7 +26,9 @@ func WithWindowHolds(qs []provider.SubscriptionQuota, now time.Time) []provider.
 		return qs
 	}
 	s := readLogSnapshot()
-	dry := dryRuns(qs, provider.QuotaHistories(since, "", ""), now)
+	hist := provider.QuotaHistories(since, "", "")
+	qs = withRecordedWindowStarts(qs, hist, now)
+	dry := dryRuns(qs, hist, now)
 	return windowHolds(qs, now, s.firstOwn, apiPricer(), provider.Renamed(), dry, func(fn func(Record)) { s.visit(since, fn) })
 }
 
@@ -72,8 +74,9 @@ func holdsBounds(q provider.SubscriptionQuota, w provider.QuotaWindow, at time.T
 
 // dryRun is a stretch in which one of an account's windows had nothing
 // left (#2010, NorethSea): from the last reading that still had some (zero
-// when none is known) through the first that read none, to the first that
-// had some again (zero while none has). A call the vendor answered in it
+// when none is known) through the first that read none, to its known reset
+// or the first reading that had some again, whichever is earlier (zero
+// while neither is known). A call the vendor answered in it
 // may have been paid from credits (Codex) or extra usage (Claude), not
 // from the windows, and nothing in the log tells which.
 type dryRun struct{ lastLeft, firstDry, refilled time.Time }
@@ -104,7 +107,12 @@ func dryRuns(qs []provider.SubscriptionQuota, hist []provider.QuotaHistory, now 
 			k := q.Provider + "\x00" + strings.ToLower(q.User) + "\x00" + w.Name
 			pts := lines[k]
 			if n := len(pts); n == 0 || pts[n-1].At.Before(at) {
-				pts = append(append([]provider.QuotaPoint(nil), pts...), provider.QuotaPoint{At: at, Left: max(0, 100-w.Used)})
+				p := provider.QuotaPoint{At: at, Left: max(0, 100-w.Used), ResetsAt: w.ResetsAt}
+				if p.ResetsAt == nil && w.ResetSecs > 0 {
+					end := at.Add(time.Duration(w.ResetSecs) * time.Second)
+					p.ResetsAt = &end
+				}
+				pts = append(append([]provider.QuotaPoint(nil), pts...), p)
 			}
 			lines[k] = pts
 		}
@@ -114,6 +122,15 @@ func dryRuns(qs []provider.SubscriptionQuota, hist []provider.QuotaHistory, now 
 		var run *dryRun
 		var lastLeft time.Time
 		for _, p := range pts {
+			// A poll may see the refill after the first call in the new
+			// window. The known reset ends the dry run, not that poll.
+			if run != nil && !run.refilled.IsZero() && !p.At.Before(run.refilled) {
+				out[acct] = append(out[acct], *run)
+				run, lastLeft = nil, time.Time{}
+			}
+			if p.Left <= 0 && p.ResetsAt != nil && !p.ResetsAt.After(p.At) {
+				continue // a stale dry reading cannot extend an expired window
+			}
 			switch {
 			case p.Left > 0 && run != nil:
 				run.refilled = p.At
@@ -123,6 +140,9 @@ func dryRuns(qs []provider.SubscriptionQuota, hist []provider.QuotaHistory, now 
 				lastLeft = p.At
 			case run == nil:
 				run = &dryRun{lastLeft: lastLeft, firstDry: p.At}
+			}
+			if run != nil && p.ResetsAt != nil {
+				run.refilled = *p.ResetsAt
 			}
 		}
 		if run != nil {

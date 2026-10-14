@@ -276,6 +276,20 @@ func usageRoutes(mux *http.ServeMux, w Windows) {
 		defer cancel()
 		writeJSON(rw, append(hs, provider.RemoteQuotaHistories(ctx, days)...))
 	})
+	// Historical whole-window estimates come only from this computer's
+	// readings and ledger. Selecting a cycle never asks a vendor.
+	mux.HandleFunc("GET /api/usage/quotas/history/holds", func(rw http.ResponseWriter, r *http.Request) {
+		args := r.URL.Query()
+		from, e1 := time.Parse(time.RFC3339Nano, args.Get("from"))
+		to, e2 := time.Parse(time.RFC3339Nano, args.Get("to"))
+		now := usage.Clock()
+		if e1 != nil || e2 != nil || !from.Before(to) || to.After(now) || args.Get("provider") == "" || args.Get("user") == "" {
+			http.Error(rw, "provider, user and a completed time range are required", http.StatusBadRequest)
+			return
+		}
+		hist := provider.QuotaHistories(now.Add(-45*24*time.Hour), args.Get("provider"), args.Get("user"))
+		writeJSON(rw, usage.HistoricalWindowHolds(provider.CachedCards(now), hist, from, to))
+	})
 	// spends one of a Codex account's rate-limit resets, which the page
 	// has asked the user about first; what it did comes back
 	mux.HandleFunc("POST /api/usage/codex-reset", func(rw http.ResponseWriter, r *http.Request) {

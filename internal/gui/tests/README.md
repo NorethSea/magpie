@@ -2413,3 +2413,12 @@ observed duration rather than the nominal window name. Regression checks
 cover missing windows, historical end and sampling dates, Used/Left,
 restoring live values on 2 days/current cycle, and hiding live account
 controls while inspecting history.
+
+
+`quota-curve.test.cjs` checks that completed cycles load their own 5-hour
+and weekly whole-window estimates, never today's estimate, while retaining
+independent accounts, missing readings, Used/Left, refresh and no-scroll
+behavior in all five languages and Chromium/WebKit. Historical estimation
+is covered by `TestHistoricalWindowHoldsUsesEachWindowsOwnReading`;
+`TestWindowHoldsResetBeforeRefillReading` keeps requests at or after a known
+reset out of the preceding dry run while excluding successes before it.

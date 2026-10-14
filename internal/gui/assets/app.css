@@ -823,7 +823,7 @@ body.window .field.solo { grid-column: auto; }
 .quota-reset { display: flex; flex-wrap: wrap; column-gap: 4px; margin-top: 4px; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .quota-reset > span { white-space: nowrap; }
 /* a window's whole (WindowHolds): a line of its own under the reset */
-.quota-reset .quota-holds { flex-basis: 100%; display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; }
+.quota-reset .quota-holds, .quota-reset .quota-holds-unknown { flex-basis: 100%; display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; }
 .quota-reset .quota-holds > span { white-space: nowrap; }
 .quota-track { height: 4px; border-radius: 2px; background: var(--pill); overflow: hidden; }
 .quota-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }

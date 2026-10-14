@@ -146,6 +146,25 @@ it; multiple resets between readings and refills hidden by subsequent
 spending cannot be recovered. Sampling compression and sync merging keep
 readings on both sides of detected boundaries.
 
+Whole-window estimates in [`window_holds.go`](../../internal/usage/window_holds.go)
+exclude a window whose calls overlap an account's dry run with successful
+calls potentially paid from credits or extra usage. A known vendor reset
+ends that run even if the next poll observes its refill later; unknown
+reset times remain conservative. A stale dry reading after its own reset
+cannot extend it. Credits balances are sampled account-wide and rendered
+rounded; the ledger has no per-request credits charge. Comparing two such
+balances cannot establish which concurrent or external call spent credits,
+so no per-call polling or claimed credits attribution is added.
+Live and historical estimates use a later observed refill boundary
+(`QuotaPoint.StartsCycleAfter`) instead of reset minus span, keeping calls
+from before a fixed-deadline refill in the preceding cycle. A first reading
+without a recorded start is not itself a reset.
+Historical estimates use the same exclusions and API list prices, with the
+recorded bounds and percentage of each window, the cached window's model
+scope, and only calls/readings before the selected range ends. A scope no
+longer available on the cached card is left unknown. Historical prices are
+not retained; the cost is estimated at the current API list prices.
+
 - A successful Codex allowance reset invalidates an account's in-flight reading even when the read and reset have the same clock timestamp. `Allowances` snapshots `usedCache.generation` under its lock, and `forgetAllowance` advances the generation for that account; a reading from before the reset is dropped before routing can use it. [`routing.go`](../../internal/provider/routing.go), `TestResetAllowanceKnownAtOnce`.
 - Each refresh token has exactly one holder. Vendors rotate tokens on refresh, so two copies of one token would sign each other out. `savedTokenMu` stops two requests refreshing one saved account at once.
 - A Claude subscription account is used only for Claude Code, through the genuine Claude Code binary (see [Claude subscription bridge](claude-subscription-bridge.md)).

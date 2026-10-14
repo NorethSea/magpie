@@ -236,3 +236,51 @@ func TestWindowHoldsLeavesOutCallsPaidOtherwise(t *testing.T) {
 		t.Fatalf("a dry run before the week: week %+v, want 100000 routed", week)
 	}
 }
+
+// A successful call after the vendor's reset is in the new allowance,
+// even when the first reading of the refill arrives a few seconds later.
+func TestWindowHoldsResetBeforeRefillReading(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(-time.Hour)
+	refill := reset.Add(3 * time.Second)
+	lastLeft, firstDry := reset.Add(-90*time.Minute), reset.Add(-87*time.Minute)
+	weekReset, fiveReset := now.Add(3*24*time.Hour), reset.Add(5*time.Hour)
+	for _, providerID := range []string{"codex", "claude"} {
+		t.Run(providerID, func(t *testing.T) {
+			qs := []provider.SubscriptionQuota{{Provider: providerID, User: "sample@example.com", ReadAt: &now, Windows: []provider.QuotaWindow{
+				{Name: "5 hours", Used: 20, ResetsAt: &fiveReset, Span: 5 * time.Hour},
+				{Name: "7 days", Used: 50, ResetsAt: &weekReset, Span: 7 * 24 * time.Hour},
+			}}}
+			hist := []provider.QuotaHistory{{Provider: providerID, User: "sample@example.com", Lines: []provider.QuotaLine{{Name: "5 hours", Points: []provider.QuotaPoint{
+				{At: lastLeft, Left: 3, ResetsAt: &reset}, {At: firstDry, Left: 0, ResetsAt: &reset}, {At: refill, Left: 100, ResetsAt: &fiveReset},
+			}}}}}
+			for _, tc := range []struct {
+				name string
+				at   time.Time
+				want bool
+			}{
+				{"just after reset", reset.Add(585 * time.Millisecond), true},
+				{"at reset", reset, true},
+				{"before reset", reset.Add(-time.Second), false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					call := Record{Time: tc.at, Provider: providerID, ProviderAccount: "sample@example.com", Model: "m", Input: 1000, Status: 200}
+					got := windowHolds(qs, now, now.Add(-30*24*time.Hour), func(Record) *catalog.Price { return nil }, nil, dryRuns(qs, hist, now), func(fn func(Record)) { fn(call) })
+					h := got[0].Windows[1].Holds
+					if (h != nil) != tc.want {
+						t.Fatalf("week holds = %+v, want present %v", h, tc.want)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDryRunsKeepsTheCurrentReadingReset(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	qs := []provider.SubscriptionQuota{{Provider: "plugin", User: "sample", Windows: []provider.QuotaWindow{{Name: "5 hours", Used: 100, ResetSecs: 3600}}}}
+	runs := dryRuns(qs, nil, now)["plugin\x00sample"]
+	if len(runs) != 1 || runs[0].holds(now.Add(time.Hour)) || !runs[0].holds(now.Add(time.Hour-time.Second)) {
+		t.Fatalf("current relative reset: %+v", runs)
+	}
+}
